@@ -52,7 +52,7 @@ public class AuthService {
     }
 
     private void pushOtpToKafka(EmailDto emailDto ) throws JsonProcessingException {
-            kafkaClient.send("welcome_user",objectMapper.writeValueAsString(emailDto));
+            kafkaClient.send("user_verification",objectMapper.writeValueAsString(emailDto));
         }
 
     private Boolean ValidateJwt(String token) {
@@ -194,10 +194,12 @@ public class AuthService {
 
 
     public String resendOtp(String email) throws UserAlreadyExistException, JsonProcessingException {
+        System.out.println(email);
+
         Optional<User> existingUser = userRepository.findByEmail(email);
-        if (existingUser.isPresent()) {
-            throw new UserAlreadyExistException("User with this email already exists");
-        }
+//        if (existingUser.isPresent()) {
+//            throw new UserAlreadyExistException("User with this email already exists");
+//        }
 
         String otp = generateOtp();
         String body="Your verification code is: " + otp;

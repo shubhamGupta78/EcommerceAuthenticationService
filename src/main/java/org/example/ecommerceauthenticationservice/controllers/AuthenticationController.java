@@ -31,7 +31,7 @@ public class AuthenticationController {
 
     @PostMapping("/create/roles")
     public ResponseEntity<String> createRoles(@RequestHeader("Authorization") String token, @RequestBody CreateRoleRequestDto createRoleRequestDto) throws RoleAlreadyExistException, UserNotFoundExceptions, UserNotAllowedException, UserNotLoggedInExceptions {
-
+        token= token.substring(7); // Remove "Bearer " prefix
        String message=authService.createRoles(createRoleRequestDto.toRole(), createRoleRequestDto.getUserId(),token);
         return ResponseEntity.ok(message);
     }
@@ -71,13 +71,14 @@ public class AuthenticationController {
 
     @PostMapping("/login/otp")
     public ResponseEntity<String> loginWithOtp(@RequestBody ResendOtpRequestDto resendOtpRequestDto) throws UserNotFoundExceptions, IncorrectCredentialExceptions, JsonProcessingException, UserAlreadyExistException {
+        System.out.println("email"+resendOtpRequestDto.getEmail());
        String message=authService.resendOtp(resendOtpRequestDto.getEmail());
         return ResponseEntity.ok(message);
 
     }
 
 
-    @PostMapping("/updatePassword")
+    @PostMapping("/update/password")
         public ResponseEntity<String> updatePassword(@RequestHeader("Authorization") String token ,@RequestBody UpdatePasswordRequestDto updatePasswordRequestDto) throws UserNotFoundExceptions, IncorrectCredentialExceptions, JsonProcessingException, UserNotLoggedInExceptions {
         token=token.substring(7);
         String message = authService.updatePassword(updatePasswordRequestDto.getOldPassword(), updatePasswordRequestDto.getNewPassword(), updatePasswordRequestDto.getEmail(),token);
