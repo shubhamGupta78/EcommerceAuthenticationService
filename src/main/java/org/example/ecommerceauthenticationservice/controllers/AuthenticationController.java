@@ -1,14 +1,18 @@
 package org.example.ecommerceauthenticationservice.controllers;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import jakarta.persistence.GeneratedValue;
 import org.example.ecommerceauthenticationservice.dtos.*;
 import org.example.ecommerceauthenticationservice.exceptions.*;
 import org.example.ecommerceauthenticationservice.models.Roles;
 import org.example.ecommerceauthenticationservice.models.User;
 import org.example.ecommerceauthenticationservice.services.AuthService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/auth")
@@ -16,9 +20,23 @@ public class AuthenticationController {
 
     private final AuthService authService;
 
+    @Value("${spring.security.oauth2.resourceserver.jwt.jwk-set-uri}")
+    private String rsaKey;
+
     public AuthenticationController(AuthService authService) {
         this.authService = authService;
         // Constructor logic if needed
+    }
+
+    @GetMapping("/token/exchange")
+    public ResponseEntity<String> exchangeToken(@RequestHeader("Authorization") String token) throws UserNotFoundExceptions, JsonProcessingException, UserNotLoggedInExceptions {
+        token = token.substring(7); // Remove "Bearer " prefix
+        String newToken = authService.exchangeToken(token,rsaKey);
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("Authorization", "Bearer " + newToken);
+        return ResponseEntity.ok()
+                .headers(headers)
+                .body("Token exchanged successfully");
     }
 
     @PostMapping("/register")
@@ -92,7 +110,28 @@ public class AuthenticationController {
         return ResponseEntity.ok(message);
     }
 
+    @PatchMapping("/update/roles")
+    public ResponseEntity<String> updateRoles(@RequestHeader("Authorization") String token, @RequestBody UpdateRoleRequestDto updateRoleRequestDto) throws UserNotFoundExceptions, UserNotAllowedException, UserNotLoggedInExceptions, JsonProcessingException, RoleNotFoundExceptions {
+        token = token.substring(7);
+        String message = authService.assignRole(updateRoleRequestDto.getRoleId(), updateRoleRequestDto.getUserId(),updateRoleRequestDto.getAdminId(), token);
+        return ResponseEntity.ok(message);
+    }
 
+    @GetMapping("/view/roles")
+    public ResponseEntity<List<Roles>> viewRoles(@RequestHeader("Authorization") String token, @RequestBody ViewRolesRequestDto viewRolesRequestDto) throws UserNotFoundExceptions, UserNotAllowedException, UserNotLoggedInExceptions, JsonProcessingException {
+        token = token.substring(7);
+       List<Roles> roles = authService.viewRoles(viewRolesRequestDto.getAdminId(), token);
+        return ResponseEntity.ok(roles);
+    }
+
+
+
+    @GetMapping("/users/{roleId}")
+    public ResponseEntity<List<User>> getUsersByRole(@PathVariable Long roleId, @RequestHeader("Authorization") String token,@RequestBody ViewRolesRequestDto viewRolesRequestDto) throws UserNotFoundExceptions, UserNotAllowedException, UserNotLoggedInExceptions, JsonProcessingException {
+        token = token.substring(7);
+        List<User> users = authService.getUsersByRole(roleId, token,viewRolesRequestDto.getAdminId());
+        return ResponseEntity.ok(users);
+    }
 
 
 }

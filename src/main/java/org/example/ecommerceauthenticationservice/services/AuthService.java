@@ -8,12 +8,14 @@ import org.example.ecommerceauthenticationservice.configs.JwtConfigs;
 import org.example.ecommerceauthenticationservice.configs.KafkaClient;
 import org.example.ecommerceauthenticationservice.dtos.EmailDto;
 import org.example.ecommerceauthenticationservice.dtos.HandleLoginWithPasswordResponseServiceDto;
+
 import org.example.ecommerceauthenticationservice.exceptions.*;
 import org.example.ecommerceauthenticationservice.models.*;
 import org.example.ecommerceauthenticationservice.repositories.RoleRepository;
 import org.example.ecommerceauthenticationservice.repositories.SessionRepository;
 import org.example.ecommerceauthenticationservice.repositories.UserRepository;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
@@ -30,13 +32,16 @@ public class AuthService {
     private final JwtConfigs jwtConfigs;
     private final SessionRepository sessionRepository;
 
+
+
     private final BCryptPasswordEncoder bCryptPasswordEncoder;
 
     public AuthService(UserRepository userRepository,
                        RoleRepository roleRepository,
                        BCryptPasswordEncoder bCryptPasswordEncoder,
-                       KafkaClient kafkaClient,ObjectMapper objectMapper,
-                       JwtConfigs jwtConfigs,SessionRepository sessionRepository) {
+                       KafkaClient kafkaClient, ObjectMapper objectMapper,
+                       JwtConfigs jwtConfigs,
+                       SessionRepository sessionRepository) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.bCryptPasswordEncoder = bCryptPasswordEncoder;
@@ -44,6 +49,7 @@ public class AuthService {
         this.objectMapper = objectMapper;
         this.jwtConfigs = jwtConfigs;
         this.sessionRepository = sessionRepository;
+
     }
 
     private String generateOtp() {
@@ -51,9 +57,13 @@ public class AuthService {
         return String.valueOf(random.nextInt(100000, 999999));
     }
 
-    private void pushOtpToKafka(EmailDto emailDto ) throws JsonProcessingException {
-            kafkaClient.send("user_verification",objectMapper.writeValueAsString(emailDto));
-        }
+    private void pushOtpToKafka(EmailDto emailDto) throws JsonProcessingException {
+        kafkaClient.send("user_verification", objectMapper.writeValueAsString(emailDto));
+    }
+
+    private void pushClientRegistrationToKafka(EmailDto emailDto) throws JsonProcessingException {
+        kafkaClient.send("client_registration", objectMapper.writeValueAsString(emailDto));
+    }
 
     private Boolean ValidateJwt(String token) {
         try {
@@ -67,19 +77,19 @@ public class AuthService {
                     .parseClaimsJws(token);  // parseClaimsJws for verifying signed tokens
 
             String userId = claims.getBody().getSubject();
-           Optional<Session> optionalSession= sessionRepository.findByToken(token);
-            if(optionalSession.isEmpty()) {
+            Optional<Session> optionalSession = sessionRepository.findByToken(token);
+            if (optionalSession.isEmpty()) {
                 System.out.println("Session not found for the provided token");
                 return false;
             }
 
             Session session = optionalSession.get();
-            if(session.getSessionStatus() != SessionStatus.ACTIVE) {
+            if (session.getSessionStatus() != SessionStatus.ACTIVE) {
                 System.out.println("Session is not active");
                 return false;
             }
 
-            if(session.getExpiryDate().before(new Date())) {
+            if (session.getExpiryDate().before(new Date())) {
                 System.out.println("Session has expired");
                 return false;
             }
@@ -115,24 +125,24 @@ public class AuthService {
         calendar.add(Calendar.MINUTE, 10);
         Date tenMinutesLater = calendar.getTime();
         user.setOtpExpiry(tenMinutesLater); // Set OTP expiry to 10 minutes from now
-       // Set OTP expiry to null or a specific time if needed
-        String body="Your verification code is: " + otp;
+        // Set OTP expiry to null or a specific time if needed
+        String body = "Your verification code is: " + otp;
 
-        EmailDto emailDto =EmailDto.toDto("shubhamgupta746690@gmail.com", user.getEmail(), "Authentication Service",body);
+        EmailDto emailDto = EmailDto.toDto("shubhamgupta746690@gmail.com", user.getEmail(), "Authentication Service", body);
 
         pushOtpToKafka(emailDto);
         user.setOtp(bCryptPasswordEncoder.encode(otp)); // Store the hashed OTP in the user object
         userRepository.save(user);
 
-       return  "Verification code sent to your email, please verify to complete registration";
+        return "Verification code sent to your email, please verify to complete registration";
         // return userRepository.save(user); // Uncomment this line if you want to save the user after sending the email
     }
 
     // function to create a new role
-    public String createRoles(Roles role,Long userId,String token) throws RoleAlreadyExistException, UserNotFoundExceptions, UserNotAllowedException, UserNotLoggedInExceptions {
+    public String createRoles(Roles role, Long userId, String token) throws RoleAlreadyExistException, UserNotFoundExceptions, UserNotAllowedException, UserNotLoggedInExceptions {
 
 
-        if(token==null || !ValidateJwt(token)) {
+        if (token == null || !ValidateJwt(token)) {
             throw new UserNotLoggedInExceptions("Unable to verify your identity, please login again");
         }
         Optional<User> userOptional = userRepository.findById(userId);
@@ -141,19 +151,19 @@ public class AuthService {
         }
 
         User user = userOptional.get();
-       List<Roles> userRoles = user.getRoles();
-       Boolean isAllowed=false;
+        List<Roles> userRoles = user.getRoles();
+        Boolean isAllowed = false;
 
-       for (Roles userRole : userRoles) {
-           if(userRole.getRole().equals("ADMIN")){
-               isAllowed=true;
-               break;
-           }
-       }
+        for (Roles userRole : userRoles) {
+            if (userRole.getRole().equals("ADMIN")) {
+                isAllowed = true;
+                break;
+            }
+        }
 
-       if(!isAllowed) {
-           throw new UserNotAllowedException("You are not authorized to create roles");
-       }
+        if (!isAllowed) {
+            throw new UserNotAllowedException("You are not authorized to create roles");
+        }
         Optional<Roles> existingRole = roleRepository.findByRole((role.getRole()));
         if (existingRole.isPresent()) {
             throw new RoleAlreadyExistException("Role with this name already exists");
@@ -167,26 +177,25 @@ public class AuthService {
     public String validateOtp(String email, String otp) throws UserNotFoundExceptions, JsonProcessingException, otpExpiredException, InvalidOtpException {
         Optional<User> userOptional = userRepository.findByEmail(email);
         // Check if user exists
-         if (userOptional.isEmpty()) {
+        if (userOptional.isEmpty()) {
             throw new UserNotFoundExceptions("User not found with this email"); // User not found
         }
 
-         if( userOptional.get().getOtpExpiry() == null || userOptional.get().getOtpExpiry().before(new Date())) {
-                throw new otpExpiredException("OTP has expired, please request a new one");
-         }
+        if (userOptional.get().getOtpExpiry() == null || userOptional.get().getOtpExpiry().before(new Date())) {
+            throw new otpExpiredException("OTP has expired, please request a new one");
+        }
 
-            User user = userOptional.get();
+        User user = userOptional.get();
 
 
-            if( bCryptPasswordEncoder.matches(otp, user.getOtp()))
-            {
-                user.setVerificationStatus(VerificationStatus.VERIFIED);
-                user.setOtp(null); // Clear the OTP after successful verification
-                userRepository.save(user);
-                return createJwtToken(user); // Generate and return JWT token
-            }
+        if (bCryptPasswordEncoder.matches(otp, user.getOtp())) {
+            user.setVerificationStatus(VerificationStatus.VERIFIED);
+            user.setOtp(null); // Clear the OTP after successful verification
+            userRepository.save(user);
+            return createJwtToken(user); // Generate and return JWT token
+        }
 
-            throw new InvalidOtpException("Invalid OTP provided"); // OTP does not match
+        throw new InvalidOtpException("Invalid OTP provided"); // OTP does not match
 
         // User not found or OTP does not match
 
@@ -202,8 +211,8 @@ public class AuthService {
 //        }
 
         String otp = generateOtp();
-        String body="Your verification code is: " + otp;
-        EmailDto emailDto =EmailDto.toDto("shubhamgupta746690@gmail.com", email, "Authentication Service",body);
+        String body = "Your verification code is: " + otp;
+        EmailDto emailDto = EmailDto.toDto("shubhamgupta746690@gmail.com", email, "Authentication Service", body);
         pushOtpToKafka(emailDto);
         User user = existingUser.get();
         user.setOtp(bCryptPasswordEncoder.encode(otp)); // Store the hashed OTP in the user object
@@ -213,7 +222,7 @@ public class AuthService {
         user.setOtpExpiry(tenMinutesLater); // Set OTP expiry to 10 minutes from now
         userRepository.save(user);
         // Optionally, you can return a message indicating that the OTP has been resent
-        return  "otp has been sent";
+        return "otp has been sent";
 
     }
 
@@ -230,11 +239,11 @@ public class AuthService {
 
         HandleLoginWithPasswordResponseServiceDto responseDto = new HandleLoginWithPasswordResponseServiceDto();
 
-        if(userDetails.getVerificationStatus() == VerificationStatus.UNVERIFIED) {
+        if (userDetails.getVerificationStatus() == VerificationStatus.UNVERIFIED) {
 
             String otp = generateOtp();
-            String body="Your verification code is: " + otp;
-            EmailDto emailDto =EmailDto.toDto("shubhamgupta746690@gmail.com",userDetails.getEmail(), "Authentication Service",body);
+            String body = "Your verification code is: " + otp;
+            EmailDto emailDto = EmailDto.toDto("shubhamgupta746690@gmail.com", userDetails.getEmail(), "Authentication Service", body);
             pushOtpToKafka(emailDto);
             userDetails.setOtp(bCryptPasswordEncoder.encode(otp)); // Store the hashed OTP in the user object
             Calendar calendar = Calendar.getInstance();
@@ -247,7 +256,7 @@ public class AuthService {
             return responseDto;
         }
 
-     responseDto.setToken(createJwtToken(userDetails));
+        responseDto.setToken(createJwtToken(userDetails));
         return responseDto;
 
     }
@@ -264,14 +273,14 @@ public class AuthService {
         byte[] decodedKey = Base64.getDecoder().decode(jwtConfigs.getSecretKey());
         SecretKey key = Keys.hmacShaKeyFor(decodedKey);
 
-        String token= Jwts.builder()
+        String token = Jwts.builder()
                 .setClaims(dataInJwt)                      // custom data
                 .setIssuedAt(new Date())                   // current time
                 .setExpiration(expirationDate)             // 30 days later
-                .signWith(SignatureAlgorithm.HS256,key) // use secure key
+                .signWith(SignatureAlgorithm.HS256, key) // use secure key
                 .compact();
 
-        Session session=new Session();
+        Session session = new Session();
         session.setUser(user);
         session.setToken(token);
         session.setCreatedAt(Calendar.getInstance().getTime());
@@ -282,9 +291,9 @@ public class AuthService {
         return token;
     }
 
-    public String updatePassword(String oldPassword, String newPassword, String email,String token) throws UserNotFoundExceptions, IncorrectCredentialExceptions, UserNotLoggedInExceptions {
+    public String updatePassword(String oldPassword, String newPassword, String email, String token) throws UserNotFoundExceptions, IncorrectCredentialExceptions, UserNotLoggedInExceptions {
 
-        if(token==null || !ValidateJwt(token)) {
+        if (token == null || !ValidateJwt(token)) {
             throw new UserNotLoggedInExceptions("Unable to verify your identity, please login again");
         }
 
@@ -316,5 +325,157 @@ public class AuthService {
         sessionRepository.save(session);
         return "Logged out successfully";
     }
-}
 
+    public String assignRole(Long roleId, Long userId, Long adminId, String token) throws UserNotFoundExceptions, UserNotAllowedException, UserNotLoggedInExceptions, JsonProcessingException, RoleNotFoundExceptions {
+        if (token == null || !ValidateJwt(token)) {
+            throw new UserNotLoggedInExceptions("Unable to verify your identity, please login again");
+        }
+
+        Optional<User> userOptional = userRepository.findById(adminId);
+        if (userOptional.isEmpty()) {
+            throw new UserNotFoundExceptions("User not found with this ID");
+        }
+
+        User user = userOptional.get();
+        List<Roles> userRoles = user.getRoles();
+        Boolean isAllowed = false;
+
+        for (Roles userRole : userRoles) {
+            if (userRole.getRole().equals("ADMIN")) {
+                isAllowed = true;
+                break;
+            }
+        }
+
+        if (!isAllowed) {
+            throw new UserNotAllowedException("You are not authorized to update roles");
+        }
+
+        Optional<User> targetUserOptional = userRepository.findById(userId);
+        if (targetUserOptional.isEmpty()) {
+            throw new UserNotFoundExceptions("User not found with this ID");
+        }
+
+        Optional<Roles> existingRole = roleRepository.findById(roleId);
+        if (existingRole.isEmpty()) {
+            throw new RoleNotFoundExceptions("Role not found with this name");
+        }
+
+        Roles roleToUpdate = existingRole.get();
+        List<Roles> updatedRoles = new ArrayList<>(user.getRoles());
+        updatedRoles.add(roleToUpdate);
+        user.setRoles(updatedRoles);
+        userRepository.save(user);
+
+        return "User roles updated successfully";
+    }
+
+    public List<Roles> viewRoles(Long adminId, String token) throws UserNotFoundExceptions, UserNotAllowedException, UserNotLoggedInExceptions, JsonProcessingException {
+        if (token == null || !ValidateJwt(token)) {
+            throw new UserNotLoggedInExceptions("Unable to verify your identity, please login again");
+        }
+
+        Optional<User> userOptional = userRepository.findById(adminId);
+        if (userOptional.isEmpty()) {
+            throw new UserNotFoundExceptions("User not found with this ID");
+        }
+
+        User user = userOptional.get();
+        List<Roles> userRoles = user.getRoles();
+        Boolean isAllowed = false;
+
+        for (Roles userRole : userRoles) {
+            if (userRole.getRole().equals("ADMIN")) {
+                isAllowed = true;
+                break;
+            }
+        }
+
+        if (!isAllowed) {
+            throw new UserNotAllowedException("You are not authorized to update roles");
+        }
+
+        return roleRepository.findAll();
+        // Return the first role or modify as needed
+    }
+
+    public List<User> getUsersByRole(Long roleId, String token, Long adminId) throws UserNotFoundExceptions, UserNotAllowedException, UserNotLoggedInExceptions, JsonProcessingException {
+        if (token == null || !ValidateJwt(token)) {
+            throw new UserNotLoggedInExceptions("Unable to verify your identity, please login again");
+        }
+
+        Optional<User> userOptional = userRepository.findById(adminId);
+        if (userOptional.isEmpty()) {
+            throw new UserNotFoundExceptions("User not found with this ID");
+        }
+        User user = userOptional.get();
+        List<Roles> userRoles = user.getRoles();
+        Boolean isAllowed = false;
+        for (Roles userRole : userRoles) {
+            if (userRole.getRole().equals("ADMIN")) {
+                isAllowed = true;
+                break;
+            }
+        }
+        if (!isAllowed) {
+            throw new UserNotAllowedException("You are not authorized to view users by role");
+        }
+        Optional<Roles> roleOptional = roleRepository.findById(roleId);
+        if (roleOptional.isEmpty()) {
+            throw new UserNotFoundExceptions("Role not found with this ID");
+        }
+
+        Roles role = roleOptional.get();
+        List<User> usersWithRole = userRepository.findAll().stream()
+                .filter(users -> users.getRoles().contains(role))
+                .collect(Collectors.toList());
+
+        return usersWithRole;
+    }
+
+
+    public String exchangeToken(String token,String keys) {
+        byte[] decodedKey = Base64.getDecoder().decode(keys);
+
+        SecretKey key = Keys.hmacShaKeyFor(decodedKey);
+
+        Jws<Claims> claims = Jwts.parserBuilder()
+                .setSigningKey(key)
+                .build()
+                .parseClaimsJws(token);
+
+        String email = claims.getBody().get("email", String.class);
+        Optional<User> userOptional = userRepository.findByEmail(email);
+        User newUser;
+        if (userOptional.isEmpty()) {
+            newUser = new User();
+            newUser.setEmail(email);
+            newUser.setName(claims.getBody().get("user_name", String.class));
+            newUser.setVerificationStatus(VerificationStatus.VERIFIED);
+            newUser.setPassword(bCryptPasswordEncoder.encode(UUID.randomUUID().toString())); // Set a random password
+            newUser.setOtp(null); // Clear OTP as it's not needed for OAuth2
+            List<Roles> roles =new ArrayList<>();
+            roles.add(roleRepository.findByRole("USER").orElseThrow(() -> new RuntimeException("Default role not found")));
+            newUser.setRoles(roles);
+            userRepository.save(newUser);
+
+        }
+        else
+        {
+            newUser = userOptional.get();
+        }
+
+        String newToken = createJwtToken(newUser);
+        Session session = new Session();
+        session.setUser(newUser);
+        session.setToken(newToken);
+        session.setCreatedAt(Calendar.getInstance().getTime());
+        session.setSessionStatus(SessionStatus.ACTIVE);
+        Calendar calendar = Calendar.getInstance();
+        calendar.add(Calendar.DAY_OF_MONTH, 30); // Expire in 30 days
+        Date expirationDate = calendar.getTime();
+        session.setExpiryDate(expirationDate);
+        sessionRepository.save(session);
+        return newToken;
+    }
+}

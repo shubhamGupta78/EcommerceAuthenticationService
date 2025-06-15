@@ -43,7 +43,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<HandleError> handleIncorrectCredentialException(IncorrectCredentialExceptions e) {
 
         HandleError handleError = new HandleError();
-        handleError.setMessage("Incorrect credentials");
+        handleError.setMessage("Incorrect credentials there is a possiblilty that you have previously registerd from third party service try to change password and try again");
         handleError.setErrorDescription(e.getMessage());
         return ResponseEntity.status(401).body(handleError);
     }
